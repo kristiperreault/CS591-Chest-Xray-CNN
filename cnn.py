@@ -6,14 +6,23 @@ from sklearn.metrics import auc
 from tensorflow.keras import datasets, layers, models
 import matplotlib.pyplot as plt
 
+import pathlib
+
 # Download and extract data
 def load_transform_data():
 
-    # Load data
+    # Define Data Directories
+    data_dir = pathlib.Path('chest_xray/chest_xray')
+    train_dir = data_dir / 'train'
+    test_dir = data_dir / 'test'
+    val_dir = data_dir / 'val'
 
-    # Perform any data manipulation
+    # Create TF Datasets
+    train_ds = tf.keras.preprocessing.image_dataset_from_directory(train_dir, color_mode='grayscale')
+    val_ds = tf.keras.preprocessing.image_dataset_from_directory(val_dir, color_mode='grayscale')
+    test_ds = tf.keras.preprocessing.image_dataset_from_directory(test_dir, color_mode='grayscale')
 
-    return 0, 0, 0, 0
+    return train_ds, val_ds, test_ds
 
 # Create the model
 def create_model():
@@ -24,6 +33,7 @@ def create_model():
     # We can change these params, change pool size
     # Need to update image size
     model = models.Sequential()
+    model.add(layers.experimental.preprocessing.Rescaling(1./255))
     model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Conv2D(64, (3, 3), activation='relu'))
@@ -39,7 +49,7 @@ def create_model():
 
 
 # Compile and train model
-def train(model, train_images, train_labels, test_images, test_labels):
+def train(model, train_images, val_images, test_images):
 
     # Compile the model; we can change optimizer type and metrics reported
     model.compile(optimizer='adam',
@@ -47,14 +57,13 @@ def train(model, train_images, train_labels, test_images, test_labels):
                 metrics=['accuracy'])
 
     # Train the model - vary epochs
-    history = model.fit(train_images, train_labels, epochs=10, 
-                        validation_data=(test_images, test_labels))
+    history = model.fit(train_images, epochs=10, validation_data=val_images)
     
     return history
 
 
 # Evaluate the model
-def evaluate(model, history, test_images, test_labels):
+def evaluate(model, history, test_images):
 
     # Precision and Recall
 
@@ -67,7 +76,7 @@ def evaluate(model, history, test_images, test_labels):
     plt.ylim([0.5, 1])
     plt.legend(loc='lower right')
 
-    test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
+    test_loss, test_acc = model.evaluate(test_images, verbose=2)
     print("Loss: {}", test_loss)
     print("Accuracy: {}", test_acc)
 
@@ -88,7 +97,7 @@ def evaluate(model, history, test_images, test_labels):
 
 
 # Run CNN
-train_images, train_labels, test_images, test_labels = load_transform_data()
+train_images, val_images, test_images = load_transform_data()
 model = create_model()
-history = train(model, train_images, train_labels, test_images, test_labels)
-evaluate(model, history, test_images, test_labels)
+history = train(model, train_images, val_images, test_images)
+evaluate(model, history, test_images)
