@@ -17,7 +17,7 @@ import pickle
 def load_transform_data():
 
     # Define Data Directories
-    data_dir = pathlib.Path('chest_xray/chest_xray')
+    data_dir = pathlib.Path('chest_xray')
     train_dir = data_dir / 'train'
     test_dir = data_dir / 'test'
     val_dir = data_dir / 'val'
