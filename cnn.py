@@ -2,6 +2,8 @@ import tensorflow as tf
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
 from sklearn.metrics import auc
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
 
 from tensorflow.keras import datasets, layers, models
 import matplotlib.pyplot as plt
@@ -57,7 +59,7 @@ def train(model, train_images, val_images, test_images):
                 metrics=['accuracy'])
 
     # Train the model - vary epochs
-    history = model.fit(train_images, epochs=10, validation_data=val_images)
+    history = model.fit(train_images, epochs=1, validation_data=val_images)
     
     return history
 
@@ -65,8 +67,16 @@ def train(model, train_images, val_images, test_images):
 # Evaluate the model
 def evaluate(model, history, test_images):
 
-    # Precision and Recall
+    test_images_data, y_labels = test_images
 
+    # Precision and Recall
+    y_classes = model.predict_classes(test_images_data, verbose=0)
+    # precision tp / (tp + fp)
+    precision = precision_score(test_images_data, y_classes)
+    print('Precision: %f' % precision)
+    # recall: tp / (tp + fn)
+    recall = recall_score(test_images_data, y_classes)
+    print('Recall: %f' % recall)
 
     # Plot epoch vs accuracy
     plt.plot(history.history['accuracy'], label='accuracy')
@@ -81,9 +91,8 @@ def evaluate(model, history, test_images):
     print("Accuracy: {}", test_acc)
 
     # Plot ROC and AUC - from dataset code
-    y_test, y_labels = 0, 0 # Figure this out
-    pos_label = 1 # Figure this out
-    fpr, tpr, _ = roc_curve(y_test, y_labels, pos_label = pos_label)
+    pos_label = 1
+    fpr, tpr, _ = roc_curve(test_images_data, y_labels, pos_label = pos_label)
     roc_auc = auc(fpr, tpr)
     plt.figure()
     plt.plot(fpr, tpr, label="ROC curve (area = %0.2f)" % roc_auc)
