@@ -26,38 +26,43 @@ def load_transform_data():
 
     # Create TF Datasets
     train_ds = tf.keras.preprocessing.image_dataset_from_directory(train_dir, color_mode='grayscale')
-    val_ds = tf.keras.preprocessing.image_dataset_from_directory(val_dir, color_mode='grayscale')
-    test_ds = tf.keras.preprocessing.image_dataset_from_directory(test_dir, color_mode='grayscale')
+    train_ds = train_ds.cache()
+    train_ds = train_ds.shuffle(5000, reshuffle_each_iteration=True)
+    val_ds = tf.keras.preprocessing.image_dataset_from_directory(val_dir, color_mode='grayscale', batch_size=16)
+    test_ds = tf.keras.preprocessing.image_dataset_from_directory(test_dir, color_mode='grayscale', batch_size=624)
 
     return train_ds, val_ds, test_ds
 
-def augment_data(data, func):
-    tensors = []
-    for image in data:
-        tensors.append(image)
-        n = random.randint(0, 3)
-        for i in range(n):
-            tensors.append(func(image, (1.1, 1.5)))
-    return tf.data.Dataset.from_tensor_slices(tensors)
-
 # Create the model
-def create_model():
+def create_model(dropout=False, contrast=False):
 
     # Create convolutional base with max pooling
     # MaxPooling2D(poolsize, strides=, padding=, data_format)
     # Conv2D(filters, kernel_size, strides=, padding=, activation=, use_bias=, ..)
-    # We can change these params, change pool size
-    # Need to update image size
     model = models.Sequential()
+    if (contrast):
+        model.add(layers.experimental.preprocessing.RandomContrast((0.5, 0.5)))
     model.add(layers.experimental.preprocessing.Rescaling(1./255))
+    if (dropout):
+        model.add(layers.Dropout(0.2))
     model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(256, 256, 1)))
     model.add(layers.MaxPooling2D((2, 2)))
+    if (dropout):
+        model.add(layers.Dropout(0.2))
     model.add(layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(layers.MaxPooling2D((2, 2)))
+    if (dropout):
+        model.add(layers.Dropout(0.2))
     model.add(layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
 
-    # Add layers
+    # Add dense layers
     model.add(layers.Flatten())
+    if (dropout):
+        model.add(layers.Dropout(0.5))
+    model.add(layers.Dense(64, activation='relu'))
+    if (dropout):
+        model.add(layers.Dropout(0.5))
     model.add(layers.Dense(64, activation='relu'))
     model.add(layers.Dense(2)) # This is our # of classes - one for pneumonia, one not
 
@@ -65,7 +70,7 @@ def create_model():
 
 
 # Compile and train model
-def train(model, train_images, val_images, test_images):
+def train(model, train_ds, val_ds):
 
     # Compile the model; we can change optimizer type and metrics reported
     model.compile(optimizer='adam',
@@ -73,37 +78,35 @@ def train(model, train_images, val_images, test_images):
                 metrics=['accuracy'])
 
     # Train the model - vary epochs
-    history = model.fit(train_images, epochs=1, validation_data=val_images)
+    history = model.fit(train_ds, epochs=50, validation_data=val_ds)
     
     return history
 
 
 # Evaluate the model
-def evaluate(model, history, test_images, model_name):
+def evaluate(model, history, test_ds, model_name):
 
-    test_images_data, y_labels = test_images
-
-    # Precision and Recall
-    y_classes = model.predict_classes(test_images_data, verbose=0)
-    # precision tp / (tp + fp)
-    precision = precision_score(test_images_data, y_classes)
-    print('Precision: %f' % precision)
-    # recall: tp / (tp + fn)
-    recall = recall_score(test_images_data, y_classes)
-    print('Recall: %f' % recall)
+    for test_images, test_labels in test_ds.as_numpy_iterator(): 
+        # Precision and Recall
+        predictions = np.argmax(model.predict(test_images), axis=-1)
+        pickle.dump(predictions, open("models/{}/predictions.p".format(model_name), 'wb'))
+        # precision tp / (tp + fp)
+        precision = precision_score(test_labels, predictions)
+        print('Precision: %f' % precision)
+        # recall: tp / (tp + fn)
+        recall = recall_score(test_labels, predictions)
+        print('Recall: %f' % recall)
 
     # Plot epoch vs accuracy
-#    plt.plot(history.history['accuracy'], label='accuracy')
-#    plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
+#    plt.plot(history['accuracy'], label='accuracy')
+#    plt.plot(history['val_accuracy'], label = 'val_accuracy')
 #    plt.xlabel('Epoch')
 #    plt.ylabel('Accuracy')
 #    plt.ylim([0.5, 1])
 #    plt.legend(loc='lower right')
-
-    test_loss, test_acc = model.evaluate(test_images, verbose=2)
+    test_loss, test_acc = model.evaluate(test_ds, verbose=1)
     print("Loss: {}".format(test_loss))
     print("Accuracy: {}".format(test_acc))
-    pickle.dump((test_loss, test_acc), open("models/{}/stats.p".format(model_name), 'wb'))
 
     # Plot ROC and AUC - from dataset code
 #    y_test, y_labels = 0, 0 # Figure this out
@@ -121,29 +124,36 @@ def evaluate(model, history, test_images, model_name):
 #    plt.show()
 
 # Run CNN
-train_images, val_images, test_images = load_transform_data()
+train_ds, val_ds, test_ds = load_transform_data()
 
-# View augmented data
-#for images, labels in train_images.take(1):
-#    im = Image.fromarray(np.squeeze(images[0]))
-#    im.show()
-#    im2 = Image.fromarray(np.squeeze(tf.keras.preprocessing.image.random_brightness(images[0], (1.25, 1.5))))
-#    im2.show()
+#model_name = 'default'
+#print("Model: ", model_name)
+#model = create_model()
+#history = train(model, train_ds, val_ds)
+#evaluate(model, history, test_ds, model_name)
+#pickle.dump(history.history, open("models/{}/history.p".format(model_name), 'wb'))
+#model.summary()
 
-model_name = 'default'
-model = create_model()
-history = train(model, train_images, val_images, test_images)
-model.save("models/{}".format(model_name))
-evaluate(model, history, test_images, model_name)
-# for evaluating after the model is saved`
-#model = model.load("models/{}".format(model_name)
+model_name = 'dropout'
+print("Model: ", model_name)
+model = create_model(dropout=True)
+history = train(model, train_ds, val_ds)
+pickle.dump(history.history, open("models/{}/history.p".format(model_name), 'wb'))
+evaluate(model, history, test_ds, model_name)
+model.summary()
 
+model_name = 'contrast'
+print("Model: ", model_name)
+model = create_model(contrast=True)
+history = train(model, train_ds, val_ds)
+pickle.dump(history.history, open("models/{}/history.p".format(model_name), 'wb'))
+evaluate(model, history, test_ds, model_name)
+model.summary()
 
-model_name = 'rand_brightness'
-model = create_model()
-train_images_2 = augment_data(train_images, tf.keras.preprocessing.image.random_brightness)
-# not done yet
-#history = train(model, train_images_2, val_images, test_images)
-#evaluate(model, history, test_images, model_name)
-#model.save("models/{}".format(model_name))
-
+model_name = 'both'
+print("Model: ", model_name)
+model = create_model(contrast=True, dropout=True)
+history = train(model, train_ds, val_ds)
+pickle.dump(history.history, open("models/{}/history.p".format(model_name), 'wb'))
+evaluate(model, history, test_ds, model_name)
+model.summary()
