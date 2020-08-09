@@ -7,14 +7,19 @@ from sklearn.metrics import recall_score
 
 from tensorflow.keras import datasets, layers, models
 import matplotlib.pyplot as plt
+import numpy as np
+import random
+import PIL
+from PIL import Image
 
 import pathlib
+import pickle
 
 # Download and extract data
 def load_transform_data():
 
     # Define Data Directories
-    data_dir = pathlib.Path('chest_xray/chest_xray')
+    data_dir = pathlib.Path('chest_xray')
     train_dir = data_dir / 'train'
     test_dir = data_dir / 'test'
     val_dir = data_dir / 'val'
@@ -26,6 +31,15 @@ def load_transform_data():
 
     return train_ds, val_ds, test_ds
 
+def augment_data(data, func):
+    tensors = []
+    for image in data:
+        tensors.append(image)
+        n = random.randint(0, 3)
+        for i in range(n):
+            tensors.append(func(image, (1.1, 1.5)))
+    return tf.data.Dataset.from_tensor_slices(tensors)
+
 # Create the model
 def create_model():
 
@@ -36,7 +50,7 @@ def create_model():
     # Need to update image size
     model = models.Sequential()
     model.add(layers.experimental.preprocessing.Rescaling(1./255))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(256, 256, 1)))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(layers.MaxPooling2D((2, 2)))
@@ -65,7 +79,7 @@ def train(model, train_images, val_images, test_images):
 
 
 # Evaluate the model
-def evaluate(model, history, test_images):
+def evaluate(model, history, test_images, model_name):
 
     test_images_data, y_labels = test_images
 
@@ -79,34 +93,57 @@ def evaluate(model, history, test_images):
     print('Recall: %f' % recall)
 
     # Plot epoch vs accuracy
-    plt.plot(history.history['accuracy'], label='accuracy')
-    plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.ylim([0.5, 1])
-    plt.legend(loc='lower right')
+#    plt.plot(history.history['accuracy'], label='accuracy')
+#    plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
+#    plt.xlabel('Epoch')
+#    plt.ylabel('Accuracy')
+#    plt.ylim([0.5, 1])
+#    plt.legend(loc='lower right')
 
     test_loss, test_acc = model.evaluate(test_images, verbose=2)
-    print("Loss: {}", test_loss)
-    print("Accuracy: {}", test_acc)
+    print("Loss: {}".format(test_loss))
+    print("Accuracy: {}".format(test_acc))
+    pickle.dump((test_loss, test_acc), open("models/{}/stats.p".format(model_name), 'wb'))
 
     # Plot ROC and AUC - from dataset code
-    pos_label = 1
-    fpr, tpr, _ = roc_curve(test_images_data, y_labels, pos_label = pos_label)
-    roc_auc = auc(fpr, tpr)
-    plt.figure()
-    plt.plot(fpr, tpr, label="ROC curve (area = %0.2f)" % roc_auc)
-    plt.plot([0, 1], [0, 1], "k--")
-    plt.xlim([0.0, 1.05])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
-    plt.title("Receiver operating characteristic curve")
-    plt.show()
-
+#    y_test, y_labels = 0, 0 # Figure this out
+#    pos_label = 1 # Figure this out
+#    fpr, tpr, _ = roc_curve(y_test, y_labels, pos_label = pos_label)
+#    roc_auc = auc(fpr, tpr)
+#    plt.figure()
+#    plt.plot(fpr, tpr, label="ROC curve (area = %0.2f)" % roc_auc)
+#    plt.plot([0, 1], [0, 1], "k--")
+#    plt.xlim([0.0, 1.05])
+#    plt.ylim([0.0, 1.05])
+#    plt.xlabel("False Positive Rate")
+#    plt.ylabel("True Positive Rate")
+#    plt.title("Receiver operating characteristic curve")
+#    plt.show()
 
 # Run CNN
 train_images, val_images, test_images = load_transform_data()
+
+# View augmented data
+#for images, labels in train_images.take(1):
+#    im = Image.fromarray(np.squeeze(images[0]))
+#    im.show()
+#    im2 = Image.fromarray(np.squeeze(tf.keras.preprocessing.image.random_brightness(images[0], (1.25, 1.5))))
+#    im2.show()
+
+model_name = 'default'
 model = create_model()
 history = train(model, train_images, val_images, test_images)
-evaluate(model, history, test_images)
+model.save("models/{}".format(model_name))
+evaluate(model, history, test_images, model_name)
+# for evaluating after the model is saved`
+#model = model.load("models/{}".format(model_name)
+
+
+model_name = 'rand_brightness'
+model = create_model()
+train_images_2 = augment_data(train_images, tf.keras.preprocessing.image.random_brightness)
+# not done yet
+#history = train(model, train_images_2, val_images, test_images)
+#evaluate(model, history, test_images, model_name)
+#model.save("models/{}".format(model_name))
+
